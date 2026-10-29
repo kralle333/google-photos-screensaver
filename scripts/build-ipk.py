@@ -22,7 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST = os.path.join(ROOT, 'dist')
 
 APP_ID = 'io.github.kralle333.google-photos-screensaver'
-VERSION = '0.1.0'
+VERSION = '0.2.0'
 TITLE = 'Google Photos Screensaver'
 DESCRIPTION = 'The screen saver as a slideshow of a shared Google Photos album'
 REPO = 'https://github.com/kralle333/google-photos-screensaver'

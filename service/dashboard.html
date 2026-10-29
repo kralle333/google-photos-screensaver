@@ -42,8 +42,12 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:14px;color:#cfd3d8}
         <button type="button" id="refresh">Read again</button>
       </div>
     </form>
+    <label style="margin-top:14px">Keep up to</label>
+    <div class="row" id="counts"></div>
+    <label style="margin-top:14px">Which photos</label>
+    <div class="row" id="shapes"></div>
     <p class="note" id="album-status">&mdash;</p>
-    <p class="note">In Google Photos, open the album, choose Share, then Create link, and paste the link here. Anyone with the link can see the album; the TV keeps up to 100 of its photos and reads it again every six hours.</p>
+    <p class="note">In Google Photos, open the album, choose Share, then Create link, and paste the link here. Anyone with the link can see the album; the TV keeps up to the number of photos chosen above, shown in a random order, and reads the album again every six hours. More photos take longer to read the first time.</p>
   </section>
 
   <section>
@@ -76,6 +80,9 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:14px;color:#cfd3d8}
 (function () {
   var INTERVALS = [[10, '10 s'], [20, '20 s'], [30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min']];
   var LEVELS = [['dim', 'Dim'], ['bright', 'Bright']];
+  // No value shared with INTERVALS: focus is put back by value.
+  var COUNTS = [[50, '50 photos'], [100, '100'], [200, '200'], [500, '500']];
+  var SHAPES = [['all', 'All'], ['landscape', 'Landscape only']];
   var current = null;
   var albumDirty = false;
 
@@ -138,6 +145,8 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:14px;color:#cfd3d8}
     else if (s.error) { st.className = 'note bad'; st.textContent = s.error + (s.count ? ' Showing the ' + s.count + ' photos from the last read.' : ''); }
     else st.textContent = s.count + (s.count === 1 ? ' photo' : ' photos') + ' on the TV, read ' + ago(s.updated) + '.';
 
+    buttons(q('counts'), COUNTS, s.maxPhotos, 'maxPhotos');
+    buttons(q('shapes'), SHAPES, s.shape, 'shape');
     buttons(q('intervals'), INTERVALS, s.interval, 'interval');
     buttons(q('levels'), LEVELS, s.level, 'level');
     // Rebuilding the buttons drops focus, which the TV remote needs.

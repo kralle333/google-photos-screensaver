@@ -71,10 +71,30 @@ album.sync({ url: 'https://photos.app.goo.gl/x', dir: dir, max: 10, download: fa
     album.sync({ url: 'https://photos.app.goo.gl/x', dir: dir, max: 10, download: fake('<html/>') }, function (err3) {
       assert.ok(/no photos found/.test(err3.message));
       assert.strictEqual(fs.readdirSync(dir).length, 1);
-      serverTests();
+      orientationTests();
     });
   });
 });
+
+// --- landscape only, and the count taken after the filter
+function orientationTests() {
+  var shapes = 'data:[' +
+    '["AF1QipTALL",["https://lh3.googleusercontent.com/pw/TALL",1080,1920,null]],' +
+    '["AF1QipWIDE1",["https://lh3.googleusercontent.com/pw/WIDE1",1920,1080,null]],' +
+    '["AF1QipSQ",["https://lh3.googleusercontent.com/pw/SQ",1000,1000,null]],' +
+    '["AF1QipWIDE2",["https://lh3.googleusercontent.com/pw/WIDE2",4032,3024,null]]]';
+  var dir2 = path.join(tmp, 'cache2');
+  fs.mkdirSync(dir2);
+  album.sync({ url: 'https://photos.app.goo.gl/x', dir: dir2, max: 1, landscape: true, download: fake(shapes) }, function (err, photos) {
+    assert.ifError(err);
+    assert.deepEqual(photos.map(function (p) { return p.file; }), [album.fileName('AF1QipWIDE1')]);
+    album.sync({ url: 'https://photos.app.goo.gl/x', dir: dir2, max: 10, download: fake(shapes) }, function (err2, photos2) {
+      assert.ifError(err2);
+      assert.strictEqual(photos2.length, 4);
+      serverTests();
+    });
+  });
+}
 
 // --- the daemon, run for real on its port against the temporary folder
 function serverTests() {
@@ -123,12 +143,24 @@ function serverTests() {
               assert.strictEqual(pj.interval, 60);
               assert.strictEqual(pj.level, 'bright');
               assert.strictEqual(pj.dir, path.join(tmp, 'photos'));
+              assert.strictEqual(JSON.parse(b4).maxPhotos, 100);
+              assert.strictEqual(JSON.parse(b4).shape, 'all');
               req('GET', '/', null, {}, function (code5, page5) {
                 assert.strictEqual(code5, 200);
                 assert.ok(/Google Photos Screensaver/.test(page5));
                 req('GET', '/photos/../settings.json', null, {}, function (code6) {
                   assert.strictEqual(code6, 404);
-                  finish();
+                  req('POST', '/api/settings', { maxPhotos: 300 }, {}, function (code7) {
+                    assert.strictEqual(code7, 400);
+                    req('POST', '/api/settings', { maxPhotos: 500, shape: 'landscape' }, {}, function (code8, b8) {
+                      assert.strictEqual(code8, 200);
+                      assert.strictEqual(JSON.parse(b8).maxPhotos, 500);
+                      assert.strictEqual(JSON.parse(b8).shape, 'landscape');
+                      var saved = JSON.parse(fs.readFileSync(path.join(tmp, 'settings.json'), 'utf8'));
+                      assert.strictEqual(saved.maxPhotos, 500);
+                      finish();
+                    });
+                  });
                 });
               });
             });

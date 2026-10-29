@@ -15,8 +15,9 @@ the picture down for dark rooms.
    than typing a link with the remote.
 3. Choose **Use as screen saver**. **Show it now** starts it straight away.
 
-The TV keeps up to 100 of the album's photos, resized to 1920×1080, and reads
-the album again every six hours, or on **Read again**.
+The TV keeps up to 100 of the album's photos (50 to 500, chosen on the page),
+optionally only the landscape ones, resized to 1920×1080. It shows them in a
+random order and reads the album again every six hours, or on **Read again**.
 
 ## Why a shared link
 

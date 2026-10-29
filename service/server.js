@@ -30,10 +30,11 @@ var LG_SAVER_DIR = '/usr/palm/applications/com.webos.app.screensaver';
 var LG_SAVER_QML = LG_SAVER_DIR + '/qml/main.qml';
 var REFRESH_MS = 6 * 60 * 60 * 1000;
 var INTERVALS = [10, 20, 30, 60, 120, 300];
+var MAX_PHOTOS = [50, 100, 200, 500];
 
 // The app's launch page opens this port.
 var PORT = 8095;
-var DEFAULTS = { album: '', interval: 20, level: 'dim', maxPhotos: 100 };
+var DEFAULTS = { album: '', interval: 20, level: 'dim', maxPhotos: 100, shape: 'all' };
 var settings = readSettings();
 var state = { refreshing: false, updated: 0, error: '', count: 0 };
 var refreshTimer = null;
@@ -85,7 +86,7 @@ function refresh() {
     return clearCache();
   }
   state.refreshing = true;
-  album.sync({ url: settings.album, dir: PHOTOS_DIR, max: settings.maxPhotos }, function (err, photos) {
+  album.sync({ url: settings.album, dir: PHOTOS_DIR, max: settings.maxPhotos, landscape: settings.shape === 'landscape' }, function (err, photos) {
     state.refreshing = false;
     if (err) {
       state.error = err.message;
@@ -202,6 +203,8 @@ function status() {
     album: settings.album,
     interval: settings.interval,
     level: settings.level,
+    maxPhotos: settings.maxPhotos,
+    shape: settings.shape,
     refreshing: state.refreshing,
     updated: state.updated,
     count: state.count,
@@ -266,9 +269,16 @@ function saveSettings(v, cb) {
     settings.interval = n;
   }
   if ('level' in v) settings.level = v.level === 'bright' ? 'bright' : 'dim';
+  if ('maxPhotos' in v) {
+    var max = parseInt(v.maxPhotos, 10);
+    if (MAX_PHOTOS.indexOf(max) === -1) return cb(new Error('unknown photo count'));
+    settings.maxPhotos = max;
+  }
+  if ('shape' in v) settings.shape = v.shape === 'landscape' ? 'landscape' : 'all';
   try { writeJson(SETTINGS_FILE, settings); } catch (e) { return cb(e); }
   publish();
-  if ('album' in v) refresh();
+  // A new count or shape downloads the photos it adds and drops the rest.
+  if ('album' in v || 'maxPhotos' in v || 'shape' in v) refresh();
   cb(null);
 }
 

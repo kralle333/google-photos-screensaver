@@ -20,7 +20,8 @@ var USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, lik
 // node's own https cannot reach Google on webOS 4 (no current CA bundle or
 // TLS); the TV's curl can. wget is the fallback.
 var CLIENTS = ['/usr/bin/curl', '/media/developer/bin/curl', '/usr/bin/wget', '/bin/wget'];
-var MAX_BYTES = 80 * 1024 * 1024;
+// A 1920x1080 JPEG is 300-500 KB; this leaves room and still bounds the cache.
+var BYTES_PER_PHOTO = 800 * 1024;
 
 /**
  * A share link, or null where it is not one. Short links (photos.app.goo.gl)
@@ -109,7 +110,8 @@ function isJpeg(file) {
  * downloaded, ones gone from it removed. cb(err, photos) with what is in the
  * cache, [{ file, w, h }], in album order; err only when the album itself could
  * not be read, in which case the cache is left as it was.
- * @param {{ url: string, dir: string, max: number, download?: Function }} opts
+ * landscape keeps only photos wider than tall; ones of unknown size are kept.
+ * @param {{ url: string, dir: string, max: number, landscape?: boolean, download?: Function }} opts
  * @param {function(?Error, Array=): void} cb
  */
 function sync(opts, cb) {
@@ -124,8 +126,9 @@ function sync(opts, cb) {
     if (!items.length) {
       return cb(new Error('no photos found at that link: is it a shared album with link sharing on?'));
     }
+    if (opts.landscape) items = items.filter(function (it) { return !it.h || it.w > it.h; });
     items = items.slice(0, opts.max);
-    var keep = {}, have = [], bytes = 0, i = 0;
+    var keep = {}, have = [], bytes = 0, i = 0, maxBytes = opts.max * BYTES_PER_PHOTO;
 
     function finish() {
       // Anything else in the folder is from an earlier album or state.
@@ -148,7 +151,7 @@ function sync(opts, cb) {
     }
 
     (function next() {
-      if (i >= items.length || bytes >= MAX_BYTES) return finish();
+      if (i >= items.length || bytes >= maxBytes) return finish();
       var it = items[i++];
       var file = fileName(it.id);
       var full = path.join(opts.dir, file);
