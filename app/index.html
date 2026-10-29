@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Google Photos Screensaver</title>
+<style>
+html,body{margin:0;height:100%;background:#000;color:#fff;font-family:Arial,sans-serif}
+body{display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;text-align:center}
+.title{font-size:3.6vh;margin-bottom:1.4vh}
+.status{font-size:2.2vh;color:rgba(255,255,255,.65)}
+#retry{display:none;margin-top:3.5vh;padding:1.4vh 3.2vw;font-size:2vh;color:#000;background:#8ab4f8;border:none;border-radius:.8vh}
+#retry.on{display:inline-block}
+</style>
+</head>
+<body>
+<div>
+  <div class="title">Google Photos Screensaver</div>
+  <div id="status" class="status">Starting&hellip;</div>
+  <button id="retry">Press OK to try again</button>
+</div>
+<script>
+/*
+ * The settings page is served by the app's daemon, which runs as root. When
+ * it does not answer with this app's version - not started yet, or the app
+ * was just updated - the Homebrew Channel's exec service runs install.sh to
+ * start it, then the page opens. No backticks or other ES2015 here: the
+ * Homebrew Channel's compatibility check would list webOS 4 as unable to
+ * run it.
+ */
+(function () {
+  var APP_VERSION = '@VERSION@';
+  var BASE = 'http://127.0.0.1:8095';
+  var EXEC = 'luna://org.webosbrew.hbchannel.service/exec';
+  var appDir = decodeURIComponent(location.pathname.replace(/\/[^\/]*$/, ''));
+  var statusEl = document.getElementById('status');
+  var retryBtn = document.getElementById('retry');
+  var busy = false;
+
+  function say(text, stuck) {
+    statusEl.textContent = text;
+    retryBtn.className = stuck ? 'on' : '';
+    if (stuck) retryBtn.focus();
+  }
+
+  // cb(status) from the daemon, or null when nothing answers.
+  function ask(cb) {
+    var x = new XMLHttpRequest(), finished = false;
+    function end(v) { if (!finished) { finished = true; cb(v); } }
+    try {
+      x.open('GET', BASE + '/api/status?t=' + Date.now(), true);
+      x.timeout = 1500;
+      x.onreadystatechange = function () {
+        if (x.readyState !== 4) return;
+        var v = null;
+        try { v = JSON.parse(x.responseText); } catch (e) {}
+        end(v);
+      };
+      x.onerror = x.ontimeout = function () { end(null); };
+      x.send();
+    } catch (e) { end(null); }
+  }
+
+  function waitFor(tries, cb) {
+    ask(function (v) {
+      if (v || tries <= 1) return cb(v);
+      setTimeout(function () { waitFor(tries - 1, cb); }, 1000);
+    });
+  }
+
+  function open() { location.replace(BASE + '/?t=' + Date.now()); }
+
+  function install() {
+    if (busy) return;
+    busy = true;
+    say('Setting up…');
+    var bridge;
+    try { bridge = new PalmServiceBridge(); } catch (e) { bridge = null; }
+    if (!bridge) { busy = false; return say('This needs the Homebrew Channel, on a rooted TV.', true); }
+    bridge.onservicecallback = function (msg) {
+      busy = false;
+      var reply = {}, result = null;
+      try { reply = JSON.parse(msg); } catch (e) {}
+      if (reply.returnValue === false) {
+        return say('The Homebrew Channel would not run the setup. This app needs a rooted TV.', true);
+      }
+      var lines = String(reply.stdoutString || '').replace(/\s+$/, '').split('\n');
+      try { result = JSON.parse(lines[lines.length - 1]); } catch (e) {}
+      if (!result || !result.ok) return say('Setup failed' + (result && result.error ? ': ' + result.error : '') + '.', true);
+      say('Starting…');
+      waitFor(30, function (v) {
+        if (!v) return say('The photo service did not start.', true);
+        open();
+      });
+    };
+    bridge.call(EXEC, JSON.stringify({ command: 'sh "' + appDir + '/service/install.sh"' }));
+  }
+
+  function start() {
+    say('Starting…');
+    waitFor(2, function (v) {
+      if (v && v.version === APP_VERSION) return open();
+      install();
+    });
+  }
+
+  retryBtn.addEventListener('click', function () { if (!busy) start(); });
+  document.addEventListener('keydown', function (e) {
+    if ((e.keyCode || e.which) === 461 && window.PalmSystem && window.PalmSystem.platformBack) {
+      window.PalmSystem.platformBack();
+    }
+  });
+  start();
+})();
+</script>
+</body>
+</html>

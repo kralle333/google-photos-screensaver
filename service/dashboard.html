@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Google Photos Screensaver</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b0c0e;color:#e8eaed;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:16px;line-height:1.45}
+main{max-width:720px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;font-weight:500;margin:0 0 4px}
+.sub{color:#9aa0a6;margin:0 0 24px}
+section{background:#16181c;border-radius:12px;padding:18px 18px 20px;margin-bottom:16px}
+h2{font-size:15px;font-weight:600;margin:0 0 10px;color:#cfd3d8}
+label{display:block;color:#9aa0a6;font-size:14px;margin:0 0 6px}
+input[type=url]{width:100%;padding:10px 12px;border-radius:8px;border:1px solid #3a3f46;background:#0b0c0e;color:#e8eaed;font-size:16px}
+.row{display:-webkit-flex;display:flex;-webkit-flex-wrap:wrap;flex-wrap:wrap;margin-top:12px}
+.row>*{margin:0 8px 8px 0}
+button{padding:9px 16px;border-radius:8px;border:1px solid #3a3f46;background:#22262c;color:#e8eaed;font-size:15px;cursor:pointer}
+button.on{background:#1a73e8;border-color:#1a73e8;color:#fff}
+button.primary{background:#1a73e8;border-color:#1a73e8;color:#fff}
+button:disabled{opacity:.45;cursor:default}
+button:focus,input:focus{outline:3px solid #8ab4f8;outline-offset:2px}
+.note{color:#9aa0a6;font-size:14px;margin:10px 0 0}
+.bad{color:#f28b82}
+.good{color:#81c995}
+code{font-family:ui-monospace,Menlo,monospace;font-size:14px;color:#cfd3d8}
+</style>
+</head>
+<body>
+<main>
+  <h1>Google Photos Screensaver</h1>
+  <p class="sub">The TV's screen saver as a slideshow of a shared Google Photos album.</p>
+
+  <section>
+    <h2>Album</h2>
+    <form id="album-form">
+      <label for="album">Shared album link</label>
+      <input type="url" id="album" placeholder="https://photos.app.goo.gl/..." autocomplete="off" spellcheck="false">
+      <div class="row">
+        <button type="submit" class="primary" id="save">Save</button>
+        <button type="button" id="refresh">Read again</button>
+      </div>
+    </form>
+    <p class="note" id="album-status">&mdash;</p>
+    <p class="note">In Google Photos, open the album, choose Share, then Create link, and paste the link here. Anyone with the link can see the album; the TV keeps up to 100 of its photos and reads it again every six hours.</p>
+  </section>
+
+  <section>
+    <h2>Slideshow</h2>
+    <label>Each photo for</label>
+    <div class="row" id="intervals"></div>
+    <label style="margin-top:14px">Brightness</label>
+    <div class="row" id="levels"></div>
+    <p class="note">Each photo drifts and zooms slowly while it is shown, so nothing stays still on the panel. Dim is easier on an OLED over long hours.</p>
+  </section>
+
+  <section>
+    <h2>Screen saver</h2>
+    <p class="note" id="saver-status" style="margin-top:0">&mdash;</p>
+    <div class="row">
+      <button type="button" id="apply">Use as screen saver</button>
+      <button type="button" id="show">Show it now</button>
+    </div>
+  </section>
+
+  <p class="note" id="where"></p>
+  <p class="note bad" id="error" role="alert"></p>
+</main>
+
+<script>
+/*
+ * Shown by the TV's own browser as well as a phone's, so ES5 only: webOS 4's
+ * browser is Chromium 53.
+ */
+(function () {
+  var INTERVALS = [[10, '10 s'], [20, '20 s'], [30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min']];
+  var LEVELS = [['dim', 'Dim'], ['bright', 'Bright']];
+  var current = null;
+  var albumDirty = false;
+
+  function q(id) { return document.getElementById(id); }
+
+  function request(method, url, body, cb) {
+    var x = new XMLHttpRequest();
+    x.open(method, url, true);
+    if (body) x.setRequestHeader('Content-Type', 'application/json');
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4) return;
+      var r = null;
+      try { r = JSON.parse(x.responseText); } catch (e) {}
+      if (!r) r = { ok: false, error: x.status ? 'the TV answered ' + x.status : 'the TV did not answer' };
+      cb(r);
+    };
+    x.send(body ? JSON.stringify(body) : null);
+  }
+
+  function post(url, body) {
+    q('error').textContent = '';
+    request('POST', url, body || {}, function (r) {
+      if (!r.ok) q('error').textContent = r.error;
+      else render(r);
+    });
+  }
+
+  function ago(ms) {
+    var m = Math.round((Date.now() - ms) / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return m + ' min ago';
+    var h = Math.round(m / 60);
+    return h === 1 ? 'an hour ago' : h + ' hours ago';
+  }
+
+  function buttons(box, list, value, key) {
+    box.innerHTML = '';
+    for (var i = 0; i < list.length; i++) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = list[i][1];
+      b.className = list[i][0] === value ? 'on' : '';
+      b.setAttribute('data-v', list[i][0]);
+      b.onclick = (function (v) {
+        return function () { var o = {}; o[key] = v; post('/api/settings', o); };
+      })(list[i][0]);
+      box.appendChild(b);
+    }
+  }
+
+  function render(s) {
+    var focused = document.activeElement && document.activeElement.getAttribute('data-v');
+    current = s;
+    if (!albumDirty) q('album').value = s.album || '';
+
+    var st = q('album-status');
+    st.className = 'note';
+    if (!s.album) st.textContent = 'No album yet.';
+    else if (s.refreshing) st.textContent = 'Reading the album…' + (s.count ? ' ' + s.count + ' photos so far from the last read.' : '');
+    else if (s.error) { st.className = 'note bad'; st.textContent = s.error + (s.count ? ' Showing the ' + s.count + ' photos from the last read.' : ''); }
+    else st.textContent = s.count + (s.count === 1 ? ' photo' : ' photos') + ' on the TV, read ' + ago(s.updated) + '.';
+
+    buttons(q('intervals'), INTERVALS, s.interval, 'interval');
+    buttons(q('levels'), LEVELS, s.level, 'level');
+    // Rebuilding the buttons drops focus, which the TV remote needs.
+    if (focused) {
+      var again = document.querySelector('[data-v="' + focused + '"]');
+      if (again) again.focus();
+    }
+
+    var apply = q('apply'), ss = q('saver-status');
+    ss.className = 'note';
+    apply.hidden = s.saver !== 'qml';
+    apply.textContent = s.applied ? 'Stop using it' : 'Use as screen saver';
+    if (s.saver === 'glasshouse') ss.textContent = 'Glasshouse is managing the screen saver: choose Google Photos Screensaver on its Screensaver tab.';
+    else if (s.saver === 'flutter') { ss.className = 'note bad'; ss.textContent = 'On webOS 10 and later LG\'s screen saver cannot be replaced by an app. With Glasshouse installed it can be chosen on Glasshouse\'s Screensaver tab, where custom screen savers are experimental.'; }
+    else if (s.applied) { ss.className = 'note good'; ss.textContent = 'In use: the TV shows the album when its screen saver starts.'; }
+    else ss.textContent = 'Not in use: the TV shows LG\'s screen saver.';
+
+    q('where').textContent = s.addresses && s.addresses.length
+      ? 'Open this page from a phone or computer on the same network: ' + s.addresses.join(' or ')
+      : '';
+  }
+
+  function load() {
+    request('GET', '/api/status', null, function (r) { if (r.ok) render(r); });
+  }
+
+  q('album').oninput = function () { albumDirty = true; };
+  q('album-form').onsubmit = function (e) {
+    e.preventDefault();
+    albumDirty = false;
+    post('/api/settings', { album: q('album').value });
+  };
+  q('refresh').onclick = function () { post('/api/refresh'); };
+  q('apply').onclick = function () { post(current && current.applied ? '/api/unapply' : '/api/apply'); };
+  q('show').onclick = function () { post('/api/show'); };
+
+  /*
+   * The TV remote's arrows move between the controls in page order, and Back
+   * leaves the app. A phone or computer never sends these keys.
+   */
+  document.addEventListener('keydown', function (e) {
+    var k = e.keyCode;
+    if (k === 461) {
+      if (window.PalmSystem && window.PalmSystem.platformBack) window.PalmSystem.platformBack();
+      return;
+    }
+    if (k !== 37 && k !== 38 && k !== 39 && k !== 40) return;
+    var active = document.activeElement;
+    if (active && active.tagName === 'INPUT' && (k === 37 || k === 39)) return;
+    var all = [], els = document.querySelectorAll('input, button');
+    for (var i = 0; i < els.length; i++) if (!els[i].hidden && !els[i].disabled) all.push(els[i]);
+    var at = all.indexOf(active);
+    var next = all[Math.max(0, Math.min(all.length - 1, at + (k === 37 || k === 38 ? -1 : 1)))];
+    if (next) { next.focus(); e.preventDefault(); }
+  });
+
+  load();
+  setInterval(load, 3000);
+  if (window.PalmSystem) q('album').focus();
+})();
+</script>
+</body>
+</html>
